@@ -216,7 +216,7 @@ class SlackRoomOccupant(RoomOccupant, SlackPerson):
     """
     def __init__(self, webclient: WebClient, userid, channelid, bot):
         super().__init__(webclient, userid, channelid)
-        self._room = SlackRoom(channelid=channelid, bot=bot)
+        self._room = SlackRoom(webclient, channelid=channelid, bot=bot)
 
     @property
     def room(self):
@@ -266,9 +266,9 @@ class SlackRoomBot(RoomOccupant, SlackBot):
     """
     This class represents a bot inside a MUC.
     """
-    def __init__(self, sc, bot_id, bot_username, channelid, bot):
+    def __init__(self, webclient, bot_id, bot_username, channelid, bot):
         super().__init__(sc, bot_id, bot_username)
-        self._room = SlackRoom(channelid=channelid, bot=bot)
+        self._room = SlackRoom(webclient, channelid=channelid, bot=bot)
 
     @property
     def room(self):
@@ -488,7 +488,7 @@ class SlackRTMBackend(ErrBot):
                 )
             else:
                 msg.frm = SlackRoomOccupant(webclient, event['user'], event['channel'], bot=self)
-            msg.to = SlackRoom(channelid=event['channel'], bot=self)
+            msg.to = SlackRoom(webclient, channelid=event['channel'], bot=self)
             channel_link_name = msg.to.name
 
         # TODO: port to slackclient2
@@ -504,7 +504,7 @@ class SlackRTMBackend(ErrBot):
         """Event handler for the 'member_joined_channel' event"""
         user = SlackPerson(self.webclient, event['user'])
         if user == self.bot_identifier:
-            self.callback_room_joined(SlackRoom(channelid=event['channel'], bot=self))
+            self.callback_room_joined(SlackRoom(webclient, channelid=event['channel'], bot=self))
 
     @staticmethod
     def userid_to_username(webclient: WebClient, id_: str):
@@ -528,8 +528,6 @@ class SlackRTMBackend(ErrBot):
 
     def search_channel(self, id_=None, name=None, limit=100, channel_types='public_channel,private_channel,mpim,im', exclude_archived=False):
         channel = None
-
-        channel_types = 'private_channel'
 
         params = {
             'limit': limit,
@@ -610,7 +608,7 @@ class SlackRTMBackend(ErrBot):
             to_channel_id = msg.to.channelid
             if to_channel_id.startswith('C'):
                 log.debug("This is a divert to private message, sending it directly to the user.")
-                to_channel_id = self.get_im_channel(self.username_to_userid(msg.to.username))
+                to_channel_id = self.get_im_channel(self.username_to_userid(self.webclient, msg.to.username))
         return to_humanreadable, to_channel_id
 
     def send_message(self, msg):
@@ -634,7 +632,7 @@ class SlackRTMBackend(ErrBot):
                 to_humanreadable = msg.to.username
                 if isinstance(msg.to, RoomOccupant):  # private to a room occupant -> this is a divert to private !
                     log.debug("This is a divert to private message, sending it directly to the user.")
-                    to_channel_id = self.get_im_channel(self.username_to_userid(msg.to.username))
+                    to_channel_id = self.get_im_channel(self.username_to_userid(self.webclient, msg.to.username))
                 else:
                     to_channel_id = msg.to.channelid
 
@@ -954,13 +952,13 @@ class SlackRTMBackend(ErrBot):
     def query_room(self, room):
         """ Room can either be a name or a channelid """
         if room.startswith('C') or room.startswith('G'):
-            return SlackRoom(channelid=room, bot=self)
+            return SlackRoom(self.webclient, channelid=room, bot=self)
 
         m = SLACK_CLIENT_CHANNEL_HYPERLINK.match(room)
         if m is not None:
-            return SlackRoom(channelid=m.groupdict()['id'], bot=self)
+            return SlackRoom(self.webclient, channelid=m.groupdict()['id'], bot=self)
 
-        return SlackRoom(name=room, bot=self)
+        return SlackRoom(self.webclient, name=room, bot=self)
 
     def rooms(self):
         """
@@ -970,7 +968,7 @@ class SlackRTMBackend(ErrBot):
             A list of :class:`~SlackRoom` instances.
         """
         channels = self.channels(joined_only=True, exclude_archived=True)
-        return [SlackRoom(channelid=channel['id'], bot=self) for channel in channels]
+        return [SlackRoom(self.webclient, channelid=channel['id'], bot=self) for channel in channels]
 
     def prefix_groupchat_reply(self, message, identifier):
         super().prefix_groupchat_reply(message, identifier)
@@ -1182,7 +1180,7 @@ class SlackRoom(Room):
     @property
     def occupants(self):
         members = self._channel_info['members']
-        return [SlackRoomOccupant(self.sc, m, self.id, self._bot) for m in members]
+        return [SlackRoomOccupant(self.webclient, m, self.id, self._bot) for m in members]
 
     def invite(self, *args):
         users = {user['name']: user['id'] for user in self._bot.api_call('users.list')['members']}
