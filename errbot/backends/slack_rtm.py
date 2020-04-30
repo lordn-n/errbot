@@ -536,10 +536,15 @@ class SlackRTMBackend(ErrBot):
     def channelname_to_channelid(self, webclient: WebClient, name: str):
         """Convert a Slack channel name to its channel ID"""
         name = name.lstrip('#')
-        channel = [channel for channel in self.webclient.channels_list() if channel.name == name]
-        if not channel:
-            raise RoomDoesNotExistError(f'No channel named {name} exists')
-        return channel[0].id
+        channel_types = 'public_channel,private_channel,mpim,im'
+
+        for page in self.webclient.conversations_list(limit=1000, exclude_archived=1, types=channel_types):
+            for channel in page['channels']:
+
+                if channel['name'] == name:
+                    return channel['id']
+
+        raise RoomDoesNotExistError(f'No channel named {name} exists')
 
     def channels(self, exclude_archived=True, joined_only=False):
         """
