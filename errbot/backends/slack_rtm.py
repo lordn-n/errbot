@@ -590,7 +590,7 @@ class SlackRTMBackend(ErrBot):
         """
         if msg.is_group:
             to_channel_id = msg.to.id
-            to_humanreadable = msg.to.name if msg.to.name else self.channelid_to_channelname(to_channel_id)
+            to_humanreadable = msg.to.name if msg.to.name else self.channelid_to_channelname(self.webclient, to_channel_id)
         else:
             to_humanreadable = msg.to.username
             to_channel_id = msg.to.channelid
@@ -615,7 +615,7 @@ class SlackRTMBackend(ErrBot):
         try:
             if msg.is_group:
                 to_channel_id = msg.to.id
-                to_humanreadable = msg.to.name if msg.to.name else self.channelid_to_channelname(to_channel_id)
+                to_humanreadable = msg.to.name if msg.to.name else self.channelid_to_channelname(self.webclient, to_channel_id)
             else:
                 to_humanreadable = msg.to.username
                 if isinstance(msg.to, RoomOccupant):  # private to a room occupant -> this is a divert to private !
@@ -850,7 +850,7 @@ class SlackRTMBackend(ErrBot):
         if userid is None and username is not None:
             userid = self.username_to_userid(self.webclient, username)
         if channelid is None and channelname is not None:
-            channelid = self.channelname_to_channelid(channelname)
+            channelid = self.channelname_to_channelid(self.webclient, channelname)
         if userid is not None and channelid is not None:
             return SlackRoomOccupant(self.webclient, userid, channelid, bot=self)
         if userid is not None:
@@ -1016,7 +1016,7 @@ class SlackRoom(Room):
             else:
                 self._name = name
         else:
-            self._name = bot.channelid_to_channelname(channelid)
+            self._name = bot.channelid_to_channelname(self.webclient, channelid)
 
         self._id = None
         self._bot = bot
