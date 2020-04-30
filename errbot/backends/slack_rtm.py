@@ -518,10 +518,13 @@ class SlackRTMBackend(ErrBot):
     def username_to_userid(webclient: WebClient, name: str):
         """Convert a Slack user name to their user ID"""
         name = name.lstrip('@')
-        user = [user for user in webclient.users_list().data['members'] if user['name'] == name]
-        if user is None:
-            raise UserDoesNotExistError(f'Cannot find user {name}.')
-        return user[0]['id']
+
+        for page in webclient.users_list(limit=200):
+            for user in page['members']:
+                if user['name'] == name:
+                    return user['id']
+
+        raise UserDoesNotExistError(f'Cannot find user {name}.')
 
     def channelid_to_channelname(self, webclient: WebClient, id_: str):
         """Convert a Slack channel ID to its channel name"""
