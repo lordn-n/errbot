@@ -322,6 +322,8 @@ class SlackRTMBackend(ErrBot):
             )
             sys.exit(1)
         self.sc = None  # Will be initialized in serve_once
+        self._users = []
+        self._channels = []
         self.webclient = None
         self.bot_identifier = None
         compact = config.COMPACT_OUTPUT if hasattr(config, 'COMPACT_OUTPUT') else False
@@ -402,6 +404,11 @@ class SlackRTMBackend(ErrBot):
     def _hello_event_handler(self, webclient: WebClient, event):
         """Event handler for the 'hello' event"""
         self.webclient = webclient
+
+        """Populate the users and channels lists"""
+        self._users = self.users()
+        self._channels = self.channels()
+
         self.connect_callback()
         self.callback_presence(Presence(identifier=self.bot_identifier, status=ONLINE))
 
@@ -506,44 +513,47 @@ class SlackRTMBackend(ErrBot):
         if user == self.bot_identifier:
             self.callback_room_joined(SlackRoom(webclient, channelid=event['channel'], bot=self))
 
-    @staticmethod
-    def userid_to_username(webclient: WebClient, id_: str):
+    def userid_to_username(self, webclient: WebClient, id_: str):
         """Convert a Slack user ID to their user name"""
-        user = webclient.users_info(user=id_)['user']
-        if user is None:
-            raise UserDoesNotExistError(f'Cannot find user with ID {id_}.')
+        user = self.search_user(id_=id_)
         return user['name']
 
-    @staticmethod
-    def username_to_userid(webclient: WebClient, name: str):
+    def username_to_userid(self, webclient: WebClient, name: str):
         """Convert a Slack user name to their user ID"""
-        name = name.lstrip('@')
+        user = self.search_user(username=name)
+        return user['id']
 
-        for page in webclient.users_list(limit=200):
-            for user in page['members']:
-                if user['name'] == name:
-                    return user['id']
-
-        raise UserDoesNotExistError(f'Cannot find user {name}.')
-
-    def search_channel(self, id_=None, name=None, limit=100, channel_types='public_channel,private_channel,mpim,im', exclude_archived=False):
-        channel = None
-
-        params = {
-            'limit': limit,
-            'exclude_archived': 1 if exclude_archived is True else 0,
-            'types': channel_types
-        }
-
+    def search_user(self, id_=None, username=None, email=None):
         if id_ is not None:
-            channel = self.webclient.conversations_info(channel=id_)['channel']
-            if channel is not None:
-                return channel
-        elif name is not None:
-            for page in self.webclient.conversations_list(**params):
-                for channel in page['channels']:
-                    if channel['name'] == name.lstrip('#'):
-                        return channel
+            return self.webclient.users_info(user=id_)['user']
+
+        if username is not None or email is not None:
+            if len(self._users) == 0:
+                self._users = self.users()
+
+            for _user in self._users:
+                if username is not None:
+                    if _user['name'] == username.lstrip('@'):
+                        return _user
+                if email is not None:
+                    if 'email' in _user['profile'] and _user['profile']['email'] == email:
+                        return _user
+
+        raise UserDoesNotExistError(
+            f'Cannot find user with id: "{id_}" or username: "{username}" or email: "{email}".'
+        )
+
+    def search_channel(self, id_=None, name=None):
+        if id_ is not None:
+            return self.webclient.conversations_info(channel=id_)['channel']
+
+        if name is not None:
+            if len(self._channels) == 0:
+                self._channels = self.channels()
+
+            for channel in self._channels:
+                if channel['name'] == name.lstrip('#'):
+                    return channel
 
         raise RoomDoesNotExistError(f'Channel search with ID: "{id_}" | name: "{name}". Does not exists.')
 
@@ -558,7 +568,7 @@ class SlackRTMBackend(ErrBot):
         channel = self.search_channel(name=name)
         return channel['id']
 
-    def channels(self, exclude_archived=True, joined_only=False):
+    def channels(self, exclude_archived=True, joined_only=False, limit=1000, types='public_channel,private_channel,mpim,im'):
         """
         Get all channels and groups and return information about them.
 
@@ -569,17 +579,42 @@ class SlackRTMBackend(ErrBot):
         :returns:
             A list of channel (https://api.slack.com/types/channel)
             and group (https://api.slack.com/types/group) types.
-
-        See also:
-          * https://api.slack.com/methods/channels.list
-          * https://api.slack.com/methods/groups.list
         """
-        response = self.webclient.conversations_list(
-            limit=1000,
-            exclude_archived=exclude_archived,
-            types='public_channel,private_channel,mpim,im'
-        )
-        return response['channels']
+        json_file = 'data/channels.json'
+
+        try:
+            with open(json_file) as channels_file:
+                channels = json.load(channels_file)
+        except Exception:
+            channels = []
+
+        if len(channels) == 0:
+            # :TODO: Check the channel types, maybe we don't really need aaaaall of them (public_channel, private_channel, mpim, im)
+            for page in self.webclient.conversations_list(limit=limit, types=types, exclude_archived=int(exclude_archived)):
+                channels += page['channels']
+
+        with open(json_file, 'w') as channels_file:
+            json.dump(channels, channels_file)
+
+        return channels
+
+    def users(self, limit=1000):
+        json_file = 'data/users.json'
+
+        try:
+            with open(json_file) as users_file:
+                users = json.load(users_file)
+        except Exception:
+            users = []
+
+        if len(users) == 0:
+            for page in self.webclient.users_list(limit=1000):
+                users += page['members']
+
+        with open(json_file, 'w') as users_file:
+            json.dump(users, users_file)
+
+        return users
 
     @lru_cache(1024)
     def get_im_channel(self, id_):
