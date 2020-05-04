@@ -150,7 +150,8 @@ class SlackPerson(Person):
         if self._channelname:
             return self._channelname
 
-        channel = [channel for channel in self._webclient.channels_list() if channel['id'] == self._channelid][0]
+        channel = self._webclient.conversations_info(channel=self._channelid)['channel']
+
         if channel is None:
             raise RoomDoesNotExistError(f'No channel with ID {self._channelid} exists.')
         if not self._channelname:
@@ -266,8 +267,9 @@ class SlackRoomBot(RoomOccupant, SlackBot):
     """
     This class represents a bot inside a MUC.
     """
+
     def __init__(self, webclient, bot_id, bot_username, channelid, bot):
-        super().__init__(sc, bot_id, bot_username)
+        super().__init__(webclient, bot_id, bot_username)
         self._room = SlackRoom(webclient, channelid=channelid, bot=bot)
 
     @property
@@ -545,14 +547,19 @@ class SlackRTMBackend(ErrBot):
 
     def search_channel(self, id_=None, name=None):
         if id_ is not None:
-            return self.webclient.conversations_info(channel=id_)['channel']
+            try:
+                return self.webclient.conversations_info(channel=id_)['channel']
+            except Exception:
+                pass
 
-        if name is not None:
-            if len(self._channels) == 0:
-                self._channels = self.channels()
+        if len(self._channels) == 0:
+            self._channels = self.channels()
 
-            for channel in self._channels:
-                if channel['name'] == name.lstrip('#'):
+        for channel in self._channels:
+            if id_ is not None and channel['id'] == id_:
+                return channel
+
+            if name is not None and channel['name'] == name.lstrip('#'):
                     return channel
 
         raise RoomDoesNotExistError(f'Channel search with ID: "{id_}" | name: "{name}". Does not exists.')
@@ -1103,7 +1110,7 @@ class SlackRoom(Room):
     @property
     def private(self):
         """Return True if the room is a private group"""
-        return self._channel.id.startswith('G')
+        return self._channel['id'].startswith('G')
 
     @property
     def id(self):
