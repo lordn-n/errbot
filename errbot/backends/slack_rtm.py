@@ -461,7 +461,13 @@ class SlackRTMBackend(ErrBot):
                 "by Slack auto-expanding a link"
             )
             return
-        text = event['text']
+
+        if 'message' in event:
+            text = event['message'].get('text', '')
+            user = event['message'].get('user', event.get('bot_id'))
+        else:
+            text = event.get('text', '')
+            user = event.get('user', event.get('bot_id'))
 
         text, mentioned = self.process_mentions(text)
 
@@ -486,7 +492,7 @@ class SlackRTMBackend(ErrBot):
                     bot_username=event.get('username', '')
                 )
             else:
-                msg.frm = SlackPerson(webclient, event['user'], event['channel'])
+                msg.frm = SlackPerson(webclient, user, event['channel'])
             msg.to = SlackPerson(webclient, self.bot_identifier.userid,
                                  event['channel'])
             channel_link_name = event['channel']
