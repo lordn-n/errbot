@@ -128,7 +128,11 @@ class SlackPerson(Person):
         if self._username:
             return self._username
 
-        user = self._webclient.users_info(user=self._userid)['user']
+        try:
+            user = self._webclient.users_info(user=self._userid)['user']
+        except Exception:
+            user = None
+
         if user is None:
             log.error('Cannot find user with ID %s', self._userid)
             return f'<{self._userid}>'
