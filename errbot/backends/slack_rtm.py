@@ -506,7 +506,7 @@ class SlackRTMBackend(ErrBot):
                     bot=self
                 )
             else:
-                msg.frm = SlackRoomOccupant(webclient, event['user'], event['channel'], bot=self)
+                msg.frm = SlackRoomOccupant(webclient, user, event['channel'], bot=self)
             msg.to = SlackRoom(webclient, channelid=event['channel'], bot=self)
             channel_link_name = msg.to.name
 
