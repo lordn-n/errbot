@@ -159,7 +159,7 @@ class SlackPerson(Person):
         if channel is None:
             raise RoomDoesNotExistError(f'No channel with ID {self._channelid} exists.')
         if not self._channelname:
-            self._channelname = channel['name']
+            self._channelname = channel['name'] if 'name' in channel else channel['id']
         return self._channelname
 
     @property
