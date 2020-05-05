@@ -356,7 +356,7 @@ class SlackRTMBackend(ErrBot):
                 log.error('Failed to look up Slack userid for alternate prefix "%s": %s', prefix, e)
 
         self.bot_alt_prefixes = tuple(x.lower() for x in self.bot_config.BOT_ALT_PREFIXES)
-        log.debug('Converted bot_alt_prefixes: %s', self.bot_config.BOT_ALT_PREFIXES)
+        log.debug(f'Converted bot_alt_prefixes: {self.bot_config.BOT_ALT_PREFIXES}')
 
     def _setup_slack_callbacks(self):
         @RTMClient.run_on(event='message')
@@ -444,7 +444,7 @@ class SlackRTMBackend(ErrBot):
         subtype = event.get('subtype', None)
 
         if subtype in ("message_deleted", "channel_topic", "message_replied"):
-            log.debug("Message of type %s, ignoring this event", subtype)
+            log.debug(f"Message of type {subtype}, ignoring this event")
             return
 
         if subtype == "message_changed" and 'attachments' in event['message']:
@@ -473,8 +473,8 @@ class SlackRTMBackend(ErrBot):
 
         text = self.sanitize_uris(text)
 
-        log.debug('Saw an event: %s', pprint.pformat(event))
-        log.debug('Escaped IDs event text: %s', text)
+        log.debug(f'Saw an event: {pprint.pformat(event)}')
+        log.debug(f'Escaped IDs event text: {text}')
 
         msg = Message(
             text,
@@ -689,9 +689,9 @@ class SlackRTMBackend(ErrBot):
                     to_channel_id = msg.to.channelid
 
             msgtype = "direct" if msg.is_direct else "channel"
-            log.debug('Sending %s message to %s (%s).', msgtype, to_humanreadable, to_channel_id)
+            log.debug(f'Sending {msgtype} message to {to_humanreadable} ({to_channel_id}).')
             body = self.md.convert(msg.body)
-            log.debug('Message size: %d.', len(body))
+            log.debug(f'Message size: {len(body)}.')
 
             limit = min(self.bot_config.MESSAGE_SIZE_LIMIT, SLACK_MESSAGE_LIMIT)
             parts = self.prepare_message_body(body, limit)
@@ -754,8 +754,7 @@ class SlackRTMBackend(ErrBot):
             :return Stream: object on which you can monitor the progress of it.
         """
         stream = Stream(user, fsource, name, size, stream_type)
-        log.debug('Requesting upload of %s to %s (size hint: %d, stream type: %s).',
-                  name, user.channelname, size, stream_type)
+        log.debug(f'Requesting upload of {name} to {user.channelname} (size hint: {size}, stream type: {stream_type}).')
         self.thread_pool.apply_async(self._slack_upload, (stream,))
         return stream
 
@@ -796,7 +795,7 @@ class SlackRTMBackend(ErrBot):
                 'as_user': 'true'
             }
             try:
-                log.debug('Sending data:\n%s', data)
+                log.debug(f'Sending data:\n{data}')
                 self.webclient.chat_postMessage(**data)
             except Exception:
                 log.exception(f'An exception occurred while trying to send a card to {to_humanreadable}.[{card}]')
@@ -908,7 +907,7 @@ class SlackRTMBackend(ErrBot):
         Supports strings with the formats accepted by
         :func:`~extract_identifiers_from_string`.
         """
-        log.debug('building an identifier from %s.', txtrep)
+        log.debug(f'building an identifier from {txtrep}.')
         username, userid, channelname, channelid = self.extract_identifiers_from_string(txtrep)
 
         if userid is None and username is not None:
@@ -1057,7 +1056,7 @@ class SlackRTMBackend(ErrBot):
             try:
                 identifier = self.build_identifier(word)
             except Exception as e:
-                log.debug("Tried to build an identifier from '%s' but got exception: %s", word, e)
+                log.debug(f"Tried to build an identifier from '{word}' but got exception: {e}")
                 continue
 
             # We only track mentions of persons.
