@@ -335,6 +335,7 @@ class SlackRTMBackend(ErrBot):
         compact = config.COMPACT_OUTPUT if hasattr(config, 'COMPACT_OUTPUT') else False
         self.md = slack_markdown_converter(compact)
         self._register_identifiers_pickling()
+        self.app_client = WebClient(token=identity.get('oauth_token'))
 
     def update_alternate_prefixes(self):
         """Converts BOT_ALT_PREFIXES to use the slack ID instead of name
@@ -374,6 +375,10 @@ class SlackRTMBackend(ErrBot):
         @RTMClient.run_on(event='presence_change')
         def serve_presences(**payload):
             self._presence_change_event_handler(payload['web_client'], payload['data'])
+
+        @RTMClient.run_on(event='reaction_added')
+        def serve_reactions(**payload):
+            self._reaction_event_handler(payload['web_client'], payload['data'])
 
     def serve_forever(self):
         self.sc = RTMClient(token=self.token, proxy=self.proxies)
@@ -525,6 +530,50 @@ class SlackRTMBackend(ErrBot):
         if user == self.bot_identifier:
             self.callback_room_joined(SlackRoom(webclient, channelid=event['channel'], bot=self))
 
+    def _reaction_event_handler(self, webclient: WebClient, event):
+        channel = event['item']['channel']
+        if channel[0] not in 'CGD':
+            log.warning(f'Unknown message type! Unable to handle {channel}')
+            return
+
+        msg = None
+        item_type = event['item']['type']
+        reaction = event['reaction']
+
+        if item_type == 'message':
+            item = self.app_client.conversations_history(
+                channel=event['item']['channel'],
+                oldest=event['item']['ts'],
+                inclusive=1,
+                limit=1,
+            )['messages'][0]
+
+            print('event', json.dumps(dict(event), indent=4))
+            print('conversation message', json.dumps(dict(item), indent=4))
+
+            extras = {
+                'slack_event': event
+            }
+
+            extras_to_add = ['bot_id', 'username', 'attachments', 'reactions']
+            for extra in extras_to_add:
+                if extra in item:
+                    extras[extra] = item[extra]
+
+            msg = Message(
+                item['text'],
+                extras=extras
+            )
+
+            msg.frm = SlackRoomOccupant(webclient, event['user'], event['item']['channel'], bot=self)
+        else:
+            self.log.warning(f'Unsupported item type "{item_type}" for reaction')
+            return
+
+        msg.to = SlackRoom(webclient, channelid=event['item']['channel'], bot=self)
+
+        self.callback_reaction(msg, reaction)
+
     def userid_to_username(self, webclient: WebClient, id_: str):
         """Convert a Slack user ID to their user name"""
         user = self.search_user(id_=id_)
@@ -570,14 +619,14 @@ class SlackRTMBackend(ErrBot):
                 return channel
 
             if name is not None and channel['name'] == name.lstrip('#'):
-                    return channel
+                return channel
 
         raise RoomDoesNotExistError(f'Channel search with ID: "{id_}" | name: "{name}". Does not exists.')
 
     def channelid_to_channelname(self, webclient: WebClient, id_: str):
         """Convert a Slack channel ID to its channel name"""
         channel = self.search_channel(id_=id_)
-        return channel['name']
+        return channel['name'] if 'name' in channel else channel['id']
 
     def channelname_to_channelid(self, webclient: WebClient, name: str):
         """Convert a Slack channel name to its channel ID"""

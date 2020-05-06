@@ -198,6 +198,18 @@ class ErrBot(Backend, StoreMixin):
             self.prefix_groupchat_reply(reply, msg.frm)
         self.split_and_send_message(reply)
 
+    def process_reaction(self, msg, reaction):
+        text = msg.body
+        text = text.strip()
+        cmd = None
+        command = None
+
+        for command in self.commands:
+            if command.startswith('reaction_') and reaction.replace('-', '_') in command:
+                cmd = command
+                self._process_command(msg, cmd, text, match=None)
+        return True
+
     def process_message(self, msg):
         """Check if the given message is a command for the bot and act on it.
         It return True for triggering the callback_messages on the .callback_messages on the plugins.
@@ -570,6 +582,10 @@ class ErrBot(Backend, StoreMixin):
         for admin in self._admins_to_notify():
             self.send(self.build_identifier(admin), warning)
         log.warning(warning)
+
+    def callback_reaction(self, msg, reaction):
+        if self.process_reaction(msg, reaction):
+            self._dispatch_to_plugins('callback_message', msg)
 
     def callback_message(self, msg):
         """Processes for commands and dispatches the message to all the plugins."""
